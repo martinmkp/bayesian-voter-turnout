@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.450">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Predicting Voter Turnouts</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="main_files/libs/clipboard/clipboard.min.js"></script>
+<script src="main_files/libs/quarto-html/quarto.js"></script>
+<script src="main_files/libs/quarto-html/popper.min.js"></script>
+<script src="main_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="main_files/libs/quarto-html/anchor.min.js"></script>
+<link href="main_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="main_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="main_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="main_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="main_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+</head>
+
+<body class="fullcontent">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Predicting Voter Turnouts</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Libraries</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Modeling</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(cmdstanr)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(brms)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co">#if (!require('priorsense')) remotes::install_github('n-kall/priorsense');</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co">#library(priorsense)</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="fu">options</span>(<span class="at">brms.backend=</span><span class="st">'cmdstanr'</span>)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="fu">options</span>(<span class="at">brms.file_refit=</span><span class="st">'on_change'</span>)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(loo)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Visualizations</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(knitr)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyr)</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(GGally)</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(cowplot)</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gridExtra)</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(reshape2)</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(bayesplot)</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">require</span>(<span class="st">'viridis'</span>)) <span class="fu">install.packages</span>(<span class="st">'viridis'</span>);</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(viridis)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<section id="introduction" class="level2">
+<h2 class="anchored" data-anchor-id="introduction">1. Introduction</h2>
+<p>Text</p>
+</section>
+<section id="data-exploration" class="level2">
+<h2 class="anchored" data-anchor-id="data-exploration">2. Data Exploration</h2>
+<p>The dataset consists of county-level information on voter turnout and demographics. The variables are:</p>
+<ul>
+<li><code>turnout_est</code>: Voter turnout estimate, measured as a ratio of number of votes and citizen voting age population (CVAP)</li>
+<li><code>elderly_prop</code>: Share of elderly people</li>
+<li><code>white_cvap_prop</code>: Share of white CVAP</li>
+<li><code>bsc_prop</code>: Share of population with a bachelor’s degree</li>
+<li><code>poverty_prop</code>: Poverty percentage on a scale <span class="math inline">\([0, 1]\)</span></li>
+<li><code>median_hh_income</code>: Median household income</li>
+</ul>
+<p>Each observation is identified with a unique FIPS code. The first <span class="math inline">\(6\)</span> rows of the dataset:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Set up directories</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>parent_dir <span class="ot">&lt;-</span> <span class="fu">dirname</span>(<span class="fu">getwd</span>())</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>data_path <span class="ot">&lt;-</span> <span class="fu">file.path</span>(parent_dir, <span class="st">'data'</span>, <span class="st">'data_preprocessed.csv'</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Load dataset</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(data_path, <span class="at">header=</span><span class="cn">TRUE</span>, <span class="at">sep=</span><span class="st">';'</span>)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="fu">kable</span>(<span class="fu">head</span>(df[,<span class="dv">1</span><span class="sc">:</span><span class="dv">7</span>]))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<table class="table table-sm table-striped small">
+<colgroup>
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 13%">
+<col style="width: 17%">
+<col style="width: 10%">
+<col style="width: 13%">
+<col style="width: 18%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: right;">county_fips</th>
+<th style="text-align: right;">turnout_est</th>
+<th style="text-align: right;">elderly_prop</th>
+<th style="text-align: right;">white_cvap_prop</th>
+<th style="text-align: right;">bsc_prop</th>
+<th style="text-align: right;">poverty_prop</th>
+<th style="text-align: right;">median_hh_income</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">1001</td>
+<td style="text-align: right;">0.6618208</td>
+<td style="text-align: right;">0.1588062</td>
+<td style="text-align: right;">0.7623928</td>
+<td style="text-align: right;">0.2813147</td>
+<td style="text-align: right;">0.112</td>
+<td style="text-align: right;">67565</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">1003</td>
+<td style="text-align: right;">0.6529095</td>
+<td style="text-align: right;">0.2128472</td>
+<td style="text-align: right;">0.8631425</td>
+<td style="text-align: right;">0.3245029</td>
+<td style="text-align: right;">0.089</td>
+<td style="text-align: right;">71135</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">1005</td>
+<td style="text-align: right;">0.5402157</td>
+<td style="text-align: right;">0.2018429</td>
+<td style="text-align: right;">0.4912686</td>
+<td style="text-align: right;">0.1115310</td>
+<td style="text-align: right;">0.255</td>
+<td style="text-align: right;">38866</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">1007</td>
+<td style="text-align: right;">0.5456355</td>
+<td style="text-align: right;">0.1729252</td>
+<td style="text-align: right;">0.7517771</td>
+<td style="text-align: right;">0.1191381</td>
+<td style="text-align: right;">0.178</td>
+<td style="text-align: right;">50907</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">1009</td>
+<td style="text-align: right;">0.6418799</td>
+<td style="text-align: right;">0.1863896</td>
+<td style="text-align: right;">0.9212424</td>
+<td style="text-align: right;">0.1490361</td>
+<td style="text-align: right;">0.131</td>
+<td style="text-align: right;">55203</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">1011</td>
+<td style="text-align: right;">0.5906530</td>
+<td style="text-align: right;">0.1717172</td>
+<td style="text-align: right;">0.2483995</td>
+<td style="text-align: right;">0.1169114</td>
+<td style="text-align: right;">0.308</td>
+<td style="text-align: right;">33124</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>First, a <span class="math inline">\(90/10\)</span> split is performed on the dataset to create a training and test datasets:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">100</span>) </span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>train_idx <span class="ot">&lt;-</span> <span class="fu">sort</span>(<span class="fu">sample.int</span>(<span class="at">n=</span><span class="fu">nrow</span>(df), <span class="at">size=</span><span class="fu">floor</span>(<span class="fl">0.9</span><span class="sc">*</span><span class="fu">nrow</span>(df)), <span class="at">replace=</span>F))</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>df_train <span class="ot">&lt;-</span> df[train_idx, ]</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>df_test  <span class="ot">&lt;-</span> df[<span class="sc">-</span>train_idx, ]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>To get familiar with the properties of each variable, their histograms are plot:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Histograms</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>df_train <span class="sc">%&gt;%</span> </span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_longer</span>(<span class="at">cols =</span> <span class="dv">2</span><span class="sc">:</span><span class="dv">7</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(value)) <span class="sc">+</span> </span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_histogram</span>(<span class="at">color =</span> <span class="st">'#000000'</span>, <span class="at">fill =</span> <span class="st">'#797979'</span>, <span class="at">bins=</span><span class="dv">40</span>) <span class="sc">+</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span>name, <span class="at">scales =</span> <span class="st">'free'</span>) <span class="sc">+</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>sum_table <span class="ot">&lt;-</span> <span class="fu">do.call</span>(cbind, <span class="fu">lapply</span>(df_train[,<span class="dv">2</span><span class="sc">:</span><span class="dv">7</span>], summary, <span class="dv">1</span>))</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="fu">kable</span>(sum_table)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<table class="table table-sm table-striped small">
+<colgroup>
+<col style="width: 8%">
+<col style="width: 13%">
+<col style="width: 14%">
+<col style="width: 17%">
+<col style="width: 11%">
+<col style="width: 14%">
+<col style="width: 19%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;"></th>
+<th style="text-align: right;">turnout_est</th>
+<th style="text-align: right;">elderly_prop</th>
+<th style="text-align: right;">white_cvap_prop</th>
+<th style="text-align: right;">bsc_prop</th>
+<th style="text-align: right;">poverty_prop</th>
+<th style="text-align: right;">median_hh_income</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Min.</td>
+<td style="text-align: right;">0.0355451</td>
+<td style="text-align: right;">0.0461538</td>
+<td style="text-align: right;">0.0163331</td>
+<td style="text-align: right;">0.0000000</td>
+<td style="text-align: right;">0.0300000</td>
+<td style="text-align: right;">22901.00</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">1st Qu.</td>
+<td style="text-align: right;">0.5909990</td>
+<td style="text-align: right;">0.1673143</td>
+<td style="text-align: right;">0.7029935</td>
+<td style="text-align: right;">0.1617052</td>
+<td style="text-align: right;">0.0990000</td>
+<td style="text-align: right;">47850.75</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Median</td>
+<td style="text-align: right;">0.6587178</td>
+<td style="text-align: right;">0.1950109</td>
+<td style="text-align: right;">0.8761868</td>
+<td style="text-align: right;">0.2060993</td>
+<td style="text-align: right;">0.1280000</td>
+<td style="text-align: right;">55208.00</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Mean</td>
+<td style="text-align: right;">0.6572337</td>
+<td style="text-align: right;">0.1987913</td>
+<td style="text-align: right;">0.8007335</td>
+<td style="text-align: right;">0.2304250</td>
+<td style="text-align: right;">0.1373583</td>
+<td style="text-align: right;">57337.90</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">3rd Qu.</td>
+<td style="text-align: right;">0.7267506</td>
+<td style="text-align: right;">0.2244907</td>
+<td style="text-align: right;">0.9432212</td>
+<td style="text-align: right;">0.2737591</td>
+<td style="text-align: right;">0.1650000</td>
+<td style="text-align: right;">63893.00</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Max.</td>
+<td style="text-align: right;">0.9975460</td>
+<td style="text-align: right;">0.5841379</td>
+<td style="text-align: right;">1.0000000</td>
+<td style="text-align: right;">0.7630406</td>
+<td style="text-align: right;">0.4390000</td>
+<td style="text-align: right;">155362.00</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>Most of the voter turnout estimates are concentrated around the range <span class="math inline">\((0.5, 0.75)\)</span>. The variable <code>white_cvap_prop</code> stands out from other independent variables due to its strong negative skewness, fat tail and relatively high mode. <code>median_hh_income</code> is the only variable not measured on the scale <span class="math inline">\([0,1]\)</span>.</p>
+<p>Correlation coefficients reveal that all variables except <code>poverty_prop</code> are positively correlated with voter turnout, as expected. <code>median_hh_income</code> and <code>poverty_prop</code> appear to largely measure the same phenomenon: They are strongly negatively correlated, and their scatter plots against voter turnout essentially mirror each other. Out of these two, <code>poverty_prop</code> is kept, as I find it more easily interpretable.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggpairs</span>(df_train, <span class="at">columns =</span> <span class="dv">2</span><span class="sc">:</span><span class="dv">7</span>, <span class="at">progress =</span> <span class="cn">FALSE</span>) <span class="sc">+</span> </span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>(<span class="at">base_size=</span><span class="dv">8</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+</section>
+<section id="modeling-approach" class="level2">
+<h2 class="anchored" data-anchor-id="modeling-approach">3. Modeling Approach</h2>
+<section id="beta-regression" class="level3">
+<h3 class="anchored" data-anchor-id="beta-regression">Beta regression</h3>
+<p>To model voter turnouts as a function of demographic variables, beta regression is used. The main reason for this choice is that in beta regression it is assumed that the dependent variable follows a beta distribution, which a reasonable assumption for this problem: Similarly to voter turnout, beta distributed random variables are continuous, and they can take any value between <span class="math inline">\(0\)</span> and <span class="math inline">\(1\)</span>. (Strictly speaking voter turnout can also equal <span class="math inline">\(0\)</span> or <span class="math inline">\(1\)</span>, whereas a beta distributed random variable cannot. However, the dataset used here does not contain such values.) In addition, beta distribution are flexible, allowing many kinds of shapes for the distribution.</p>
+<p>A beta regression model is formulated as follows: The dependent variable <span class="math inline">\(y\)</span> is assumed to be beta distributed with parameter values <span class="math inline">\(\mu\)</span> and <span class="math inline">\(\phi\)</span>:</p>
+<p><span class="math display">\[
+y \sim \text{Beta}(\mu, \phi)
+\]</span> These parameters are not the standard scale parameters <span class="math inline">\(\alpha\)</span> and <span class="math inline">\(\beta\)</span>, but transformations of them. <span class="math inline">\(mu = \alpha/(\alpha+\beta)\)</span> is called the parameter, as it equals the expected value of <span class="math inline">\(y\)</span>. <span class="math inline">\(\phi = \alpha+\beta\)</span> is the parameter, measuring the level of dispersion of the distribution: A larger value indicates less dispersion.</p>
+<p>Assuming there are <span class="math inline">\(N\)</span> observations, where <span class="math inline">\(\bf{x}\)</span> are the variables used to explain <span class="math inline">\(\mu\)</span> and <span class="math inline">\(\bf{z}\)</span> to explain <span class="math inline">\(\phi\)</span>, then for every <span class="math inline">\(i=1,...,N\)</span>:</p>
+<p><span class="math display">\[
+y_i \sim \text{Beta}(\mu_i, \phi)
+\]</span> where <span class="math display">\[
+g_1 (\mu_i) = \bf{x}_i^T\beta
+\]</span></p>
+<p>and</p>
+<p><span class="math display">\[
+g_2 (\phi_i) = \bf{z}_i^T\gamma
+\]</span> where <span class="math inline">\(\beta\)</span> and <span class="math inline">\(\gamma\)</span> are vectors of intercepts and coefficients. <span class="math inline">\(g_1(\cdot)\)</span> and <span class="math inline">\(g_2(\cdot)\)</span> are link functions, whose main task is to map <span class="math inline">\(\mu \in (0, 1)\)</span> and <span class="math inline">\(\phi &gt; 0\)</span> on real line. Common choices for link functions are logit for the former, and log for the latter.</p>
+</section>
+<section id="test-run-with-default-priors" class="level3">
+<h3 class="anchored" data-anchor-id="test-run-with-default-priors">Test run with default priors</h3>
+<p>To test the suitability of beta regression for the research problem, a simple model with one explaining variable and default priors is tested. Logit and log are the link functions.</p>
+<p>As <code>poverty_prop</code> has strongest correlation with voter turnout, it will be used for explaining <span class="math inline">\(logit(\mu_i)\)</span> variable. The precision parameter is explained with <code>white_cvap_prop</code> based on its perceived association with the spread of voter turnout values, based on the scatter plots.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Model formula</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>model_path_simple <span class="ot">&lt;-</span> <span class="fu">file.path</span>(parent_dir, <span class="st">'models'</span>, <span class="st">'fit_simple'</span>)</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>formula_simple <span class="ot">&lt;-</span> <span class="fu">bf</span>(turnout_est <span class="sc">~</span> poverty_prop,</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>                     phi <span class="sc">~</span> white_cvap_prop)</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Fit the model</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>fit_simple <span class="ot">&lt;-</span> brms<span class="sc">::</span><span class="fu">brm</span>(</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">formula =</span> formula_simple,</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> df_train,</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">family =</span> <span class="fu">Beta</span>(),</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">chains =</span> <span class="dv">4</span>, </span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>  <span class="at">iter =</span> <span class="dv">1000</span>, </span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>  <span class="at">warmup =</span> <span class="dv">500</span>,</span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">100</span>,</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> model_path_simple,</span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">silent =</span> <span class="dv">0</span></span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Four chains and 1000 iterations with 500 warm up steps were used to sample posteriors. According to trace plots, the MCMC converged: The chains are exploring the same region without obvious trends or autocorrelation.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mcmc_trace</span>(fit_simple, <span class="at">regex_pars=</span><span class="st">'b_'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-8-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">pp_check</span>(fit_simple, <span class="at">ndraws=</span><span class="dv">10</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-9-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+</section>
+</section>
+<section id="prior-selection" class="level2">
+<h2 class="anchored" data-anchor-id="prior-selection">4. Prior selection</h2>
+<section id="priors-for-mean-parameter-coefficients" class="level3">
+<h3 class="anchored" data-anchor-id="priors-for-mean-parameter-coefficients">Priors for mean parameter coefficients</h3>
+<p>According to US Elections project, the voter turnout measured against voter eligible population (VEP) was approximately 60% in 2016 presidential elections. This measure is slightly different from the measure used in the data, as VEP excludes adult citizens not eligible to vote, such as felons in some states. In spite of this difference, we will use it as a starting point for choosing priors for the intercept and coefficients <span class="math inline">\(\beta\)</span> in <span class="math inline">\(g_1(\mu_i) = \bf{x}_i^T\beta\)</span>. A logit link function will be used. It follows that <span class="math inline">\(\mu_i = (1+\exp(-\bf{x}_i^T\beta))^{-1}\)</span>.</p>
+<p>The prior for intercept is:</p>
+<ul>
+<li><code>b_Intercept</code>
+<ul>
+<li>Normal prior <span class="math inline">\(N(0.4, 3)\)</span></li>
+</ul></li>
+</ul>
+<p>The reason for this choice is that if the coefficients are zero, the mean parameters are assumed to be <span class="math inline">\(0.6 = (1+\exp(-0.4))^{-1}\)</span>, and variance <span class="math inline">\(1.5\)</span> expresses uncertainty about the true value.</p>
+<p>For independent variables, the following priors are used:</p>
+<ul>
+<li><code>b_poverty_prop</code>
+<ul>
+<li>Normal prior <span class="math inline">\(N(-1, 1.5)\)</span></li>
+</ul></li>
+<li><code>b_bsc_prop</code>
+<ul>
+<li>Normal prior <span class="math inline">\(N(0.5, 1.5)\)</span></li>
+</ul></li>
+<li><code>b_elderly_prop</code>
+<ul>
+<li>Normal prior <span class="math inline">\(N(0.5, 1.5)\)</span></li>
+</ul></li>
+<li><code>b_white_cvap_prop</code>
+<ul>
+<li>Normal prior <span class="math inline">\(N(0.5, 1.5)\)</span></li>
+</ul></li>
+</ul>
+<p>In the other words, we assume poverty to have a negative effect on voter turnout, and share of population with a bachelor’s degree, share of white CVAP and share of elderly people a positive effect on voter turnout. The absolute value for prior mean of the coefficient for <code>poverty_prop</code> expresses the belief that poverty percentage has a stronger effect on mean than the rest of the variables.</p>
+<p>After logistic transformations, it can be seen that the intercept assigns most of the density around values <span class="math inline">\((0.4, 0.8)\)</span> and less on extreme values, which is what we wanted. Coefficients for <code>white_cvap_prop</code>, <code>bsc_prop</code> and <code>elderly_prop</code> put slightly more density for larger mean values, and <code>poverty_prop</code> for smaller values.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>df_norm1 <span class="ot">&lt;-</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>norm1 <span class="ot">&lt;-</span> <span class="fu">plogis</span>(<span class="fu">rnorm</span>(<span class="at">n=</span><span class="dv">1000</span>,<span class="at">mean=</span><span class="fl">0.4</span>, <span class="at">sd=</span><span class="fu">sqrt</span>(<span class="fl">1.5</span>))),</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>norm2 <span class="ot">&lt;-</span> <span class="fu">plogis</span>(<span class="fu">rnorm</span>(<span class="at">n=</span><span class="dv">1000</span>,<span class="at">mean=</span><span class="sc">-</span><span class="dv">1</span>, <span class="at">sd=</span><span class="fu">sqrt</span>(<span class="fl">1.5</span>))),</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>norm3 <span class="ot">&lt;-</span> <span class="fu">plogis</span>(<span class="fu">rnorm</span>(<span class="at">n=</span><span class="dv">1000</span>,<span class="at">mean=</span><span class="fl">0.5</span>, <span class="at">sd=</span><span class="fu">sqrt</span>(<span class="fl">1.5</span>)))</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>norm_plot1 <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(df_norm1, <span class="fu">aes</span>(<span class="at">x=</span>norm1)) <span class="sc">+</span> <span class="fu">geom_histogram</span>(<span class="at">bins =</span> <span class="dv">20</span>) <span class="sc">+</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>   <span class="fu">xlab</span>(<span class="st">'intercept'</span>) <span class="sc">+</span> <span class="fu">theme_minimal</span>()</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>norm_plot2 <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(df_norm1, <span class="fu">aes</span>(<span class="at">x=</span>norm2)) <span class="sc">+</span> <span class="fu">geom_histogram</span>(<span class="at">bins =</span> <span class="dv">20</span>) <span class="sc">+</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">'poverty'</span>) <span class="sc">+</span> <span class="fu">theme_minimal</span>()</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>norm_plot3 <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(df_norm1, <span class="fu">aes</span>(<span class="at">x=</span>norm3)) <span class="sc">+</span> <span class="fu">geom_histogram</span>(<span class="at">bins =</span> <span class="dv">20</span>) <span class="sc">+</span></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">'white, bsc., elderly'</span>) <span class="sc">+</span> <span class="fu">theme_minimal</span>()</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a><span class="fu">plot_grid</span>(norm_plot1, norm_plot2, norm_plot3, <span class="at">nrows=</span><span class="dv">1</span>,</span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>          <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">'N(0.4, 1.5)'</span>, <span class="st">'N(-1, 1.5)'</span>, <span class="st">'N(0.5, 1.5)'</span>),</span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>          <span class="at">label_fontface =</span> <span class="st">'plain'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-10-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+</section>
+<section id="priors-for-precision-parameter-coefficients" class="level3">
+<h3 class="anchored" data-anchor-id="priors-for-precision-parameter-coefficients">Priors for precision parameter coefficients</h3>
+<p>For precision parameter regression coefficients <span class="math inline">\(\gamma\)</span>, exponential link function is used: <span class="math inline">\(\log(\phi_i) = \bf{z}_i^T\gamma\)</span>. I do not have any strong belief for their priors. Instead, the main goal of the priors is to assign sufficient amount of density for wide range of values while assigning less density for unrealistically large and small values. The priors are:</p>
+<ul>
+<li><code>b_phi_Intercept</code>
+<ul>
+<li><span class="math inline">\(N(1.8, 1.5)\)</span></li>
+</ul></li>
+<li><code>b_phi_white_cvap_prop</code>, <code>b_phi_elderly_prop</code>, <code>b_phi_poverty_prop</code>, <code>b_phi_white_cvap_prop</code>
+<ul>
+<li><span class="math inline">\(N(0, 1.5)\)</span></li>
+</ul></li>
+</ul>
+<p>where zero means of the coefficient priors expresses the idea that the effect of independent variables on voter turnout is unknown. The idea here is that <span class="math inline">\(\phi_i = \exp(1.8) \approx 6\)</span>, results in a somewhat realistic distribution of voter turnout, with most of the mass around moderate values, and less around the tails:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>() <span class="sc">+</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_function</span>(<span class="at">fun =</span> dbeta, <span class="at">args =</span> <span class="fu">list</span>(<span class="at">shape1 =</span> <span class="fl">3.6</span>, <span class="at">shape2 =</span> <span class="fl">2.4</span>)) <span class="sc">+</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">'alpha = 3.6, beta = 2.4, phi = 6'</span>) <span class="sc">+</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-11-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+<p>After exponential transformation, the prior distributions put most of the density for values less than <span class="math inline">\(10\)</span>. However, they still give some density for large values:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>df_norm2 <span class="ot">&lt;-</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>norm1 <span class="ot">&lt;-</span> <span class="fu">exp</span>(<span class="fu">rnorm</span>(<span class="at">n=</span><span class="dv">1000</span>,<span class="at">mean=</span><span class="fl">1.8</span>, <span class="at">sd=</span><span class="fu">sqrt</span>(<span class="fl">1.5</span>))),</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>norm2 <span class="ot">&lt;-</span> <span class="fu">exp</span>(<span class="fu">rnorm</span>(<span class="at">n=</span><span class="dv">1000</span>,<span class="at">mean=</span><span class="dv">0</span>, <span class="at">sd=</span><span class="fu">sqrt</span>(<span class="fl">1.5</span>)))</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>norm_plot5 <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(df_norm2, <span class="fu">aes</span>(<span class="at">x=</span>norm1)) <span class="sc">+</span> <span class="fu">geom_histogram</span>(<span class="at">bins =</span> <span class="dv">40</span>) <span class="sc">+</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>   <span class="fu">xlab</span>(<span class="st">'intercept'</span>) <span class="sc">+</span> <span class="fu">theme_minimal</span>() <span class="sc">+</span> <span class="fu">xlim</span>(<span class="dv">0</span>, <span class="dv">40</span>) <span class="sc">+</span> <span class="fu">ylim</span>(<span class="dv">0</span>, <span class="dv">280</span>)</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>norm_plot6 <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(df_norm2, <span class="fu">aes</span>(<span class="at">x=</span>norm2)) <span class="sc">+</span> <span class="fu">geom_histogram</span>(<span class="at">bins =</span> <span class="dv">40</span>) <span class="sc">+</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">'Coefficients'</span>) <span class="sc">+</span> <span class="fu">theme_minimal</span>() <span class="sc">+</span> <span class="fu">xlim</span>(<span class="dv">0</span>, <span class="dv">40</span>) <span class="sc">+</span> <span class="fu">ylim</span>(<span class="dv">0</span>, <span class="dv">280</span>)</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a><span class="fu">plot_grid</span>(norm_plot5, norm_plot6, <span class="at">nrows=</span><span class="dv">1</span>,</span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>          <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">'N(1.8, 1.5)'</span>, <span class="st">'N(0, 1.5)'</span>),</span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>          <span class="at">label_fontface =</span> <span class="st">'plain'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-12-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+</section>
+<section id="prior-predictive-check" class="level3">
+<h3 class="anchored" data-anchor-id="prior-predictive-check">Prior predictive check</h3>
+<p>The performance of priors is assessed with prior predictive check. Here, every independent variable is used to explain both of the mean and precision parameter.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>model_path_prior_1 <span class="ot">&lt;-</span> <span class="fu">file.path</span>(parent_dir, <span class="st">'models'</span>, <span class="st">'fit_prior_1'</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Priors</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>prior_1 <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>           <span class="co"># Mean coefficients     </span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">0.4</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'Intercept'</span>),</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="sc">-</span><span class="dv">1</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'poverty_prop'</span>),</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">0.5</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'bsc_prop'</span>),</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">0.5</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'elderly_prop'</span>),</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">0.5</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'white_cvap_prop'</span>),</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>           </span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>           <span class="co"># Phi coefficients</span></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">1.8</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'Intercept'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'poverty_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'bsc_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'elderly_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'white_cvap_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>)</span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a>          )</span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Model formula</span></span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>formula_prior_1 <span class="ot">&lt;-</span> <span class="fu">bf</span>(turnout_est <span class="sc">~</span> poverty_prop <span class="sc">+</span> elderly_prop <span class="sc">+</span> white_cvap_prop</span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a>                                 <span class="sc">+</span> bsc_prop,</span>
+<span id="cb13-23"><a href="#cb13-23" aria-hidden="true" tabindex="-1"></a>                     phi <span class="sc">~</span> poverty_prop <span class="sc">+</span> elderly_prop <span class="sc">+</span> white_cvap_prop</span>
+<span id="cb13-24"><a href="#cb13-24" aria-hidden="true" tabindex="-1"></a>                                 <span class="sc">+</span> bsc_prop)</span>
+<span id="cb13-25"><a href="#cb13-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-26"><a href="#cb13-26" aria-hidden="true" tabindex="-1"></a><span class="co"># Fit the model</span></span>
+<span id="cb13-27"><a href="#cb13-27" aria-hidden="true" tabindex="-1"></a>fit_prior_1 <span class="ot">&lt;-</span> brms<span class="sc">::</span><span class="fu">brm</span>(</span>
+<span id="cb13-28"><a href="#cb13-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">formula =</span> formula_prior_1,</span>
+<span id="cb13-29"><a href="#cb13-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">prior =</span> prior_1,</span>
+<span id="cb13-30"><a href="#cb13-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> df_train,</span>
+<span id="cb13-31"><a href="#cb13-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">family =</span> <span class="fu">Beta</span>(),</span>
+<span id="cb13-32"><a href="#cb13-32" aria-hidden="true" tabindex="-1"></a>  <span class="at">chains =</span> <span class="dv">4</span>, </span>
+<span id="cb13-33"><a href="#cb13-33" aria-hidden="true" tabindex="-1"></a>  <span class="at">iter =</span> <span class="dv">2000</span>, </span>
+<span id="cb13-34"><a href="#cb13-34" aria-hidden="true" tabindex="-1"></a>  <span class="at">warmup =</span> <span class="dv">1000</span>,</span>
+<span id="cb13-35"><a href="#cb13-35" aria-hidden="true" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">100</span>,</span>
+<span id="cb13-36"><a href="#cb13-36" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> model_path_prior_1,</span>
+<span id="cb13-37"><a href="#cb13-37" aria-hidden="true" tabindex="-1"></a>  <span class="at">silent =</span> <span class="dv">0</span>,</span>
+<span id="cb13-38"><a href="#cb13-38" aria-hidden="true" tabindex="-1"></a>  <span class="at">sample_prior =</span> <span class="st">'only'</span></span>
+<span id="cb13-39"><a href="#cb13-39" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Trace plot indicate a successful MCMC:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mcmc_trace</span>(fit_prior_1, <span class="at">regex_pars=</span><span class="st">'b_'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-14-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+<p>There is a lot of variation between the prior predictive draws: While some of the draws show realistically moderate values, others show a lot of predictions close to the extreme ends.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>yrep_prior_1 <span class="ot">&lt;-</span> <span class="fu">posterior_predict</span>(fit_prior_1, <span class="at">draws =</span> <span class="dv">100</span>)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ppd_dens_overlay</span>(yrep_prior_1[<span class="dv">1</span><span class="sc">:</span><span class="dv">100</span>, ]) <span class="sc">+</span> <span class="fu">xlim</span>(<span class="dv">0</span>, <span class="dv">1</span>) <span class="sc">+</span> <span class="fu">ylim</span>(<span class="dv">0</span>, <span class="dv">10</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: Removed 175 rows containing missing values (`geom_line()`).</code></pre>
+</div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-15-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+<p>To reduce the variation between the draws and to get more realistic prior predictive draws, dispersions of the priors are reduced. However, I do not want to use too tight priors to avoid prior-data conflict. For this reason, student’s t-priors with <span class="math inline">\(7\)</span> degrees of freedom and scale <span class="math inline">\(1\)</span> are used, as it allows fatter tails compared to normal priors. An illustration how such prior with mean <span class="math inline">\(0\)</span> would differ from <span class="math inline">\(N(0, 1.5)\)</span>:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(<span class="fu">data.frame</span>(<span class="at">x =</span> <span class="fu">c</span>(<span class="sc">-</span><span class="dv">8</span>, <span class="dv">8</span>)), <span class="fu">aes</span>(<span class="at">x =</span> x)) <span class="sc">+</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_function</span>(<span class="at">fun =</span> dnorm, <span class="at">args=</span><span class="fu">list</span>(<span class="at">sd=</span><span class="fl">1.5</span>)) <span class="sc">+</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_function</span>(<span class="at">fun=</span>dt, <span class="at">args=</span><span class="fu">list</span>(<span class="at">df=</span><span class="dv">7</span>), <span class="at">color=</span><span class="st">'blue'</span>) <span class="sc">+</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a> <span class="fu">ggtitle</span>(<span class="st">'N(0, 1.5) vs. t(df=7, 0, 1)'</span>) <span class="sc">+</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-16-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>model_path_prior_2 <span class="ot">&lt;-</span> <span class="fu">file.path</span>(parent_dir, <span class="st">'models'</span>, <span class="st">'fit_prior_2'</span>)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Priors</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>prior_2 <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>           <span class="co"># Mean coefficients     </span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="fl">0.4</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'Intercept'</span>),</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="sc">-</span><span class="dv">1</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'poverty_prop'</span>),</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="fl">0.5</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'bsc_prop'</span>),</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="fl">0.5</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'elderly_prop'</span>),</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="fl">0.5</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'white_cvap_prop'</span>),</span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>           </span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>           <span class="co"># Phi coefficients</span></span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="fl">1.8</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'Intercept'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="dv">0</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'poverty_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="dv">0</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'bsc_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="dv">0</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'elderly_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="dv">0</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'white_cvap_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>)</span>
+<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a>          )</span>
+<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-20"><a href="#cb18-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Fit the model</span></span>
+<span id="cb18-21"><a href="#cb18-21" aria-hidden="true" tabindex="-1"></a>fit_prior_2 <span class="ot">&lt;-</span> brms<span class="sc">::</span><span class="fu">brm</span>(</span>
+<span id="cb18-22"><a href="#cb18-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">formula =</span> formula_prior_1,</span>
+<span id="cb18-23"><a href="#cb18-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">prior =</span> prior_2,</span>
+<span id="cb18-24"><a href="#cb18-24" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> df_train,</span>
+<span id="cb18-25"><a href="#cb18-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">family =</span> <span class="fu">Beta</span>(),</span>
+<span id="cb18-26"><a href="#cb18-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">chains =</span> <span class="dv">4</span>, </span>
+<span id="cb18-27"><a href="#cb18-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">iter =</span> <span class="dv">2000</span>, </span>
+<span id="cb18-28"><a href="#cb18-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">warmup =</span> <span class="dv">1000</span>,</span>
+<span id="cb18-29"><a href="#cb18-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">100</span>,</span>
+<span id="cb18-30"><a href="#cb18-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> model_path_prior_2,</span>
+<span id="cb18-31"><a href="#cb18-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">silent =</span> <span class="dv">0</span>,</span>
+<span id="cb18-32"><a href="#cb18-32" aria-hidden="true" tabindex="-1"></a>  <span class="at">sample_prior =</span> <span class="st">'only'</span></span>
+<span id="cb18-33"><a href="#cb18-33" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The resulting prior predictive draws are now more realistic: More density is assigned on moderate values and less on extreme values.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>yrep_prior_2 <span class="ot">&lt;-</span> <span class="fu">posterior_predict</span>(fit_prior_2, <span class="at">draws =</span> <span class="dv">100</span>)</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ppd_dens_overlay</span>(yrep_prior_2[<span class="dv">1</span><span class="sc">:</span><span class="dv">100</span>, ]) <span class="sc">+</span> <span class="fu">xlim</span>(<span class="dv">0</span>, <span class="dv">1</span>) <span class="sc">+</span> <span class="fu">ylim</span>(<span class="dv">0</span>, <span class="dv">10</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: Removed 33 rows containing missing values (`geom_line()`).</code></pre>
+</div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-18-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+</section>
+</section>
+<section id="model-fitting" class="level2">
+<h2 class="anchored" data-anchor-id="model-fitting">5. Model fitting</h2>
+<p>After choosing the priors, it is time to fit the model(s) to the data. Four models are fit, where the number of explaining variables is incremented by one for each model: The idea here is to start from a simple model, and step by step increase its complexity by adding more predictors. For each model, the explaining variables are same for both mean and precision parameters.</p>
+<section id="model-1" class="level3">
+<h3 class="anchored" data-anchor-id="model-1">Model 1</h3>
+<p>The only explaining variable for the first model is <code>poverty_prop</code>, as based on data exploration it is assumed to explain the voter turnout most. The linear predictor function for the logit mean parameter is:</p>
+<p><span class="math display">\[
+\text{logit}(\mu_i) = \beta_{\text{intercept}} + \beta_{\text{poverty_prop}}\cdot \text{poverty_prop}_i
+\]</span> and for the precision parameter: <span class="math display">\[
+\text{log}(\phi_i) = \gamma_{\text{intercept}} + \gamma_{\text{poverty_prop}}\cdot \text{poverty_prop}_i
+\]</span> The model is fit with four chains and <span class="math inline">\(2000\)</span> iterations, half of them for warm-up:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>model_path_m1 <span class="ot">&lt;-</span> <span class="fu">file.path</span>(parent_dir, <span class="st">'models'</span>, <span class="st">'fit_m1'</span>)</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Priors</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>prior_m1 <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>           <span class="co"># Mean coefficients     </span></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="fl">0.4</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'Intercept'</span>),</span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="sc">-</span><span class="dv">1</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'poverty_prop'</span>),</span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>           <span class="co"># Phi coefficients</span></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="fl">1.8</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'Intercept'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="dv">0</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'poverty_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>)</span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>          )</span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Model formula</span></span>
+<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a>formula_m1 <span class="ot">&lt;-</span> <span class="fu">bf</span>(turnout_est <span class="sc">~</span> poverty_prop,</span>
+<span id="cb21-16"><a href="#cb21-16" aria-hidden="true" tabindex="-1"></a>                 phi <span class="sc">~</span> poverty_prop)</span>
+<span id="cb21-17"><a href="#cb21-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-18"><a href="#cb21-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Fit the model</span></span>
+<span id="cb21-19"><a href="#cb21-19" aria-hidden="true" tabindex="-1"></a>fit_m1 <span class="ot">&lt;-</span> brms<span class="sc">::</span><span class="fu">brm</span>(</span>
+<span id="cb21-20"><a href="#cb21-20" aria-hidden="true" tabindex="-1"></a>  <span class="at">formula =</span> formula_m1,</span>
+<span id="cb21-21"><a href="#cb21-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">prior =</span> prior_m1,</span>
+<span id="cb21-22"><a href="#cb21-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> df_train,</span>
+<span id="cb21-23"><a href="#cb21-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">family =</span> <span class="fu">Beta</span>(),</span>
+<span id="cb21-24"><a href="#cb21-24" aria-hidden="true" tabindex="-1"></a>  <span class="at">chains =</span> <span class="dv">4</span>, </span>
+<span id="cb21-25"><a href="#cb21-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">iter =</span> <span class="dv">2000</span>, </span>
+<span id="cb21-26"><a href="#cb21-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">warmup =</span> <span class="dv">1000</span>,</span>
+<span id="cb21-27"><a href="#cb21-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">100</span>,</span>
+<span id="cb21-28"><a href="#cb21-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> model_path_m1,</span>
+<span id="cb21-29"><a href="#cb21-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">silent =</span> <span class="dv">0</span></span>
+<span id="cb21-30"><a href="#cb21-30" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Trace plots indicate that the chains have converged to the same distributions. R-hat values are below <span class="math inline">\(1.05\)</span>, indicating good level of mixing between the chains. Also the effective sample sizes are large. Based on these metrics MCMC has successfully sampled the posteriors.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mcmc_trace</span>(fit_m1, <span class="at">regex_pars=</span><span class="st">'b_'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-20-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(fit_m1)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code> Family: beta 
+  Links: mu = logit; phi = log 
+Formula: turnout_est ~ poverty_prop 
+         phi ~ poverty_prop
+   Data: df_train (Number of observations: 2794) 
+  Draws: 4 chains, each with iter = 2000; warmup = 1000; thin = 1;
+         total post-warmup draws = 4000
+
+Population-Level Effects: 
+                 Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+Intercept            1.31      0.02     1.26     1.35 1.00     3413     2993
+phi_Intercept        3.35      0.07     3.21     3.48 1.00     3516     2994
+poverty_prop        -4.71      0.16    -5.02    -4.41 1.00     3467     3213
+phi_poverty_prop     0.26      0.46    -0.66     1.15 1.00     3507     3121
+
+Draws were sampled using sample(hmc). For each parameter, Bulk_ESS
+and Tail_ESS are effective sample size measures, and Rhat is the potential
+scale reduction factor on split chains (at convergence, Rhat = 1).</code></pre>
+</div>
+</div>
+<p>The summary statistics also show that poverty percentage has a negative effect on logit mean voter turnout, which is an expected result. Precision is mostly explained by intercept, and uncertainty about its regression coefficient value is higher than for the mean parameter:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mcmc_areas</span>(fit_m1, <span class="at">regex_pars=</span><span class="st">'b_'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-22-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+<p>Based on posterior predictive draws, the distributions simulated datasets <span class="math inline">\(y_{\text{rep}}\)</span> follow the true data voter turnouts <span class="math inline">\(y\)</span> quite closely. However, the distributions of the predictions are slightly negatively skewed compared to the true turnout values, by underestimating the left ‘bump’ of <span class="math inline">\(y\)</span> and by putting too much density on the left tail and too little on the right tail.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">pp_check</span>(fit_m1, <span class="at">ndraws=</span><span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-23-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+<p>Pointwise comparison of voter turnouts to posterior predictive intervals (<span class="math inline">\(0.5\)</span> in dark blue, <span class="math inline">\(0.9\)</span> in light blue) further confirms that the model has problems predicting turnout values close to one.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>y_train <span class="ot">=</span> df_train<span class="sc">$</span>turnout_est</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>yrep_m1 <span class="ot">=</span> <span class="fu">posterior_predict</span>(fit_m1)</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a><span class="fu">ppc_intervals</span>(<span class="at">y=</span>y_train, <span class="at">yrep=</span>yrep_m1, <span class="at">fatten=</span><span class="dv">0</span>, <span class="at">prob=</span><span class="fl">0.5</span>, <span class="at">prob_outer=</span><span class="fl">0.9</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-24-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+</section>
+<section id="model-2" class="level3">
+<h3 class="anchored" data-anchor-id="model-2">Model 2</h3>
+<p>Model is extended by adding second predictor variable, <code>bsc_prop</code>.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>model_path_m2 <span class="ot">&lt;-</span> <span class="fu">file.path</span>(parent_dir, <span class="st">'models'</span>, <span class="st">'fit_m2'</span>)</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Priors</span></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>prior_m2 <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>           <span class="co"># Mean coefficients     </span></span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="fl">0.4</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'Intercept'</span>),</span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="sc">-</span><span class="dv">1</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'poverty_prop'</span>),</span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="fl">0.5</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'bsc_prop'</span>),</span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>           </span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>           <span class="co"># Phi coefficients</span></span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="fl">1.8</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'Intercept'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="dv">0</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'poverty_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">student_t</span>(<span class="dv">7</span>, <span class="dv">0</span>, <span class="dv">1</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'bsc_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>)</span>
+<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a>          )</span>
+<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a><span class="co"># Model formula</span></span>
+<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a>formula_m2 <span class="ot">&lt;-</span> <span class="fu">bf</span>(turnout_est <span class="sc">~</span> poverty_prop <span class="sc">+</span> bsc_prop,</span>
+<span id="cb28-18"><a href="#cb28-18" aria-hidden="true" tabindex="-1"></a>                 phi <span class="sc">~</span> poverty_prop <span class="sc">+</span> bsc_prop)</span>
+<span id="cb28-19"><a href="#cb28-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-20"><a href="#cb28-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Fit the model</span></span>
+<span id="cb28-21"><a href="#cb28-21" aria-hidden="true" tabindex="-1"></a>fit_m2 <span class="ot">&lt;-</span> brms<span class="sc">::</span><span class="fu">brm</span>(</span>
+<span id="cb28-22"><a href="#cb28-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">formula =</span> formula_m2,</span>
+<span id="cb28-23"><a href="#cb28-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">prior =</span> prior_m2,</span>
+<span id="cb28-24"><a href="#cb28-24" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> df_train,</span>
+<span id="cb28-25"><a href="#cb28-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">family =</span> <span class="fu">Beta</span>(),</span>
+<span id="cb28-26"><a href="#cb28-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">chains =</span> <span class="dv">4</span>, </span>
+<span id="cb28-27"><a href="#cb28-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">iter =</span> <span class="dv">2000</span>, </span>
+<span id="cb28-28"><a href="#cb28-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">warmup =</span> <span class="dv">1000</span>,</span>
+<span id="cb28-29"><a href="#cb28-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">100</span>,</span>
+<span id="cb28-30"><a href="#cb28-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> model_path_m2,</span>
+<span id="cb28-31"><a href="#cb28-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">silent =</span> <span class="dv">0</span></span>
+<span id="cb28-32"><a href="#cb28-32" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Posterior predictive check shows that the fit is now better:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="fu">pp_check</span>(fit_m2, <span class="at">ndraws=</span><span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-26-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+<p>The model still has some problems predicting extreme values, although performance improved.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>y_train <span class="ot">=</span> df_train<span class="sc">$</span>turnout_est</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>yrep_m2 <span class="ot">=</span> <span class="fu">posterior_predict</span>(fit_m2)</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="fu">ppc_intervals</span>(<span class="at">y=</span>y_train, <span class="at">yrep=</span>yrep_m2, <span class="at">fatten=</span><span class="dv">0</span>, <span class="at">prob=</span><span class="fl">0.5</span>, <span class="at">prob_outer=</span><span class="fl">0.9</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-27-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+</section>
+<section id="model-3" class="level3">
+<h3 class="anchored" data-anchor-id="model-3">Model 3</h3>
+<p>In the last model, all four variables are used to predict voter turnout.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>model_path_m3 <span class="ot">&lt;-</span> <span class="fu">file.path</span>(parent_dir, <span class="st">'models'</span>, <span class="st">'fit_m3'</span>)</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Priors</span></span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>prior_m3 <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>           <span class="co"># Mean coefficients     </span></span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">0.4</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'Intercept'</span>),</span>
+<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="sc">-</span><span class="dv">1</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'poverty_prop'</span>),</span>
+<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">0.5</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'bsc_prop'</span>),</span>
+<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">0.5</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'elderly_prop'</span>),</span>
+<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">0.5</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'white_cvap_prop'</span>),</span>
+<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a>           </span>
+<span id="cb31-12"><a href="#cb31-12" aria-hidden="true" tabindex="-1"></a>           <span class="co"># Phi coefficients</span></span>
+<span id="cb31-13"><a href="#cb31-13" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">1.8</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'Intercept'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb31-14"><a href="#cb31-14" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'poverty_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb31-15"><a href="#cb31-15" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'bsc_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb31-16"><a href="#cb31-16" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'elderly_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>),</span>
+<span id="cb31-17"><a href="#cb31-17" aria-hidden="true" tabindex="-1"></a>           <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="fl">1.5</span>), <span class="at">class=</span><span class="st">'b'</span>, <span class="at">coef=</span><span class="st">'white_cvap_prop'</span>, <span class="at">dpar=</span><span class="st">'phi'</span>)</span>
+<span id="cb31-18"><a href="#cb31-18" aria-hidden="true" tabindex="-1"></a>          )</span>
+<span id="cb31-19"><a href="#cb31-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-20"><a href="#cb31-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Model formula</span></span>
+<span id="cb31-21"><a href="#cb31-21" aria-hidden="true" tabindex="-1"></a>formula_m3 <span class="ot">&lt;-</span> <span class="fu">bf</span>(turnout_est <span class="sc">~</span> poverty_prop <span class="sc">+</span> bsc_prop <span class="sc">+</span> elderly_prop <span class="sc">+</span> white_cvap_prop,</span>
+<span id="cb31-22"><a href="#cb31-22" aria-hidden="true" tabindex="-1"></a>                 phi <span class="sc">~</span> poverty_prop <span class="sc">+</span> bsc_prop <span class="sc">+</span> elderly_prop <span class="sc">+</span> white_cvap_prop)</span>
+<span id="cb31-23"><a href="#cb31-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-24"><a href="#cb31-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Fit the model</span></span>
+<span id="cb31-25"><a href="#cb31-25" aria-hidden="true" tabindex="-1"></a>fit_m3 <span class="ot">&lt;-</span> brms<span class="sc">::</span><span class="fu">brm</span>(</span>
+<span id="cb31-26"><a href="#cb31-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">formula =</span> formula_m3,</span>
+<span id="cb31-27"><a href="#cb31-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">prior =</span> prior_m3,</span>
+<span id="cb31-28"><a href="#cb31-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> df_train,</span>
+<span id="cb31-29"><a href="#cb31-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">family =</span> <span class="fu">Beta</span>(),</span>
+<span id="cb31-30"><a href="#cb31-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">chains =</span> <span class="dv">4</span>, </span>
+<span id="cb31-31"><a href="#cb31-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">iter =</span> <span class="dv">2000</span>, </span>
+<span id="cb31-32"><a href="#cb31-32" aria-hidden="true" tabindex="-1"></a>  <span class="at">warmup =</span> <span class="dv">1000</span>,</span>
+<span id="cb31-33"><a href="#cb31-33" aria-hidden="true" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">100</span>,</span>
+<span id="cb31-34"><a href="#cb31-34" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> model_path_m3,</span>
+<span id="cb31-35"><a href="#cb31-35" aria-hidden="true" tabindex="-1"></a>  <span class="at">silent =</span> <span class="dv">0</span></span>
+<span id="cb31-36"><a href="#cb31-36" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="fu">pp_check</span>(fit_m3, <span class="at">ndraws=</span><span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-29-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>y_train <span class="ot">=</span> df_train<span class="sc">$</span>turnout_est</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>yrep_m3 <span class="ot">=</span> <span class="fu">posterior_predict</span>(fit_m3)</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a><span class="fu">ppc_intervals</span>(<span class="at">y=</span>y_train, <span class="at">yrep=</span>yrep_m3, <span class="at">fatten=</span><span class="dv">0</span>, <span class="at">prob=</span><span class="fl">0.5</span>, <span class="at">prob_outer=</span><span class="fl">0.9</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="main_files/figure-html/unnamed-chunk-30-1.png" class="img-fluid" width="768"></p>
+</div>
+</div>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
